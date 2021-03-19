@@ -24,7 +24,10 @@ from qiskit.optimization import QuadraticProgram, QiskitOptimizationError
 from qiskit.optimization.algorithms import MinimumEigenOptimizer
 from qiskit.optimization.converters import QuadraticProgramToQubo
 from qiskit.optimization.applications.ising.common import sample_most_likely
+from qiskit.optimization.applications.ising import tsp
 from qiskit.optimization.algorithms.optimization_algorithm import OptimizationResultStatus
+
+
 
 import dimod
 from dwave.system import DWaveSampler, EmbeddingComposite, DWaveCliqueSampler
@@ -250,6 +253,32 @@ class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
         total_samples = sum(result.min_eigen_solver_result.sampleset.record.num_occurrences)
         self.assertEqual(total_samples, num_reads)
 
+    def test_sampling_params_compute_minimum_eigenvalue(self):
+        """Sampling parameters are correctly propagated with method compute_minimum_eigenvalue."""
+
+        six_cities_tsp = tsp.random_tsp(6, seed=123)
+        operator, offset = tsp.get_operator(six_cities_tsp)
+
+        # set number of reads for dwave_meo
+        num_reads = 1000
+        mes = DWaveMinimumEigensolver(sampler=self.sampler, num_reads=num_reads)
+        result = mes.compute_minimum_eigenvalue(operator)
+
+        total_samples = sum(result.sampleset.record.num_occurrences)
+        self.assertEqual(total_samples, num_reads)
+
+        # set number of reads and label individually for problem
+        num_reads = 500
+        label = "test_label"
+        result = mes.compute_minimum_eigenvalue(operator, num_reads=num_reads, label=label)
+
+        total_samples = sum(result.sampleset.record.num_occurrences)
+        self.assertEqual(total_samples, num_reads)
+
+        problem_label = result.sampleset.info['problem_label']
+        self.assertEqual(problem_label, label)
+
+
     @parameterized.expand([(size, ) for size in range(1, 5)])
     def test_random_qp(self, size):
         """QP solutions from NumPy exact solver and DWave MES match."""
@@ -307,3 +336,7 @@ class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
 
         # test only energy, actual ground states might differ
         self.assertEqual(numpy_result.fval, dwave_result.fval)
+
+TestMinimumEigenOptimizerOnDWave.setUpClass()
+test = TestMinimumEigenOptimizerOnDWave()
+test.test_sampling_params_compute_minimum_eigenvalue()

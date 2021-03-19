@@ -185,11 +185,10 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
         return self._run(**sample_kwargs)
 
     def _sample(self, **kwargs) -> dimod.SampleSet:
-        params = {}
-        if 'num_reads' in self.sampler.parameters:
-            params['num_reads'] = self._num_reads
+        if 'num_reads' in self.sampler.parameters and 'num_reads' not in kwargs:
+            kwargs['num_reads'] = self._num_reads
 
-        return self.sampler.sample(self.bqm, **params, **kwargs)
+        return self.sampler.sample(self.bqm, **kwargs)
 
     @staticmethod
     def _stringify(sample: np.ndarray) -> str:
@@ -206,6 +205,10 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
     def _run(self, **sample_kwargs) -> MinimumEigensolverResult:
         """Sample the Ising Hamiltonian provided on a D-Wave QPU to obtain the
         ground state(s).
+
+        Args:
+            **sample_kwargs: Parameters for the sampling method, specified by
+                sampler.
 
         Returns:
             MinimumEigensolverResult:
