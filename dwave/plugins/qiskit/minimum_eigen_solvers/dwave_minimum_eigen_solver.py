@@ -177,18 +177,19 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
     def compute_minimum_eigenvalue(
             self,
             operator: Optional[Union[OperatorBase, LegacyBaseOperator]] = None,
-            aux_operators: \
-                Optional[List[Optional[Union[OperatorBase,
-                                             LegacyBaseOperator]]]] = None
+            aux_operators: Optional[List[Optional[Union[OperatorBase,
+                                                        LegacyBaseOperator]]]] = None,
+            **sample_kwargs
     ) -> MinimumEigensolverResult:
         super().compute_minimum_eigenvalue(operator, aux_operators)
-        return self._run()
+        return self._run(**sample_kwargs)
 
-    def _sample(self) -> dimod.SampleSet:
+    def _sample(self, **kwargs) -> dimod.SampleSet:
         params = {}
         if 'num_reads' in self.sampler.parameters:
             params['num_reads'] = self._num_reads
-        return self.sampler.sample(self.bqm, **params)
+
+        return self.sampler.sample(self.bqm, **params, **kwargs)
 
     @staticmethod
     def _stringify(sample: np.ndarray) -> str:
@@ -202,7 +203,7 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                   for operator in self._aux_operators]
         return np.array(values, dtype=object)
 
-    def _run(self) -> MinimumEigensolverResult:
+    def _run(self, **sample_kwargs) -> MinimumEigensolverResult:
         """Sample the Ising Hamiltonian provided on a D-Wave QPU to obtain the
         ground state(s).
 
@@ -216,7 +217,7 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                 if no operator has been provided
         """
 
-        sampleset = self._sample()
+        sampleset = self._sample(**sample_kwargs)
 
         logger.debug('sampleset: %r', sampleset)
 
@@ -256,6 +257,5 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                 Optional[List[Optional[Union[OperatorBase,
                                              LegacyBaseOperator]]]] = None
     ) -> MinimumEigensolverResult:
-        """Obtain ground state(s) of an Ising Hamiltonian using D-Wave's QPU.
-        """
+        """Obtain ground state(s) of an Ising Hamiltonian using D-Wave's QPU."""
         return self.compute_minimum_eigenvalue(operator, aux_operators)
