@@ -24,10 +24,7 @@ from qiskit.optimization import QuadraticProgram, QiskitOptimizationError
 from qiskit.optimization.algorithms import MinimumEigenOptimizer
 from qiskit.optimization.converters import QuadraticProgramToQubo
 from qiskit.optimization.applications.ising.common import sample_most_likely
-from qiskit.optimization.applications.ising import tsp
 from qiskit.optimization.algorithms.optimization_algorithm import OptimizationResultStatus
-
-
 
 import dimod
 from dwave.system import DWaveSampler, EmbeddingComposite, DWaveCliqueSampler
@@ -55,10 +52,11 @@ class TestMinimumEigensolver(unittest.TestCase):
 
     @parameterized.expand([
         ("Z", Z, ({0: -1}, {})),
-        ("IZ", I^Z, ({0: -1, 1: 0}, {})),
-        ("ZZ", Z^Z, ({}, {(0, 1): 1})),
-        ("IZZI", I^Z^Z^I, ({0: 0, 1: 0, 2: 0, 3: 0}, {(1, 2): 1})),
-        ("IZZ+ZIZ", SummedOp([I^Z^Z, 2 * Z^I^Z]), ({}, {(0, 1): 1, (0, 2): 2})),
+        ("IZ", I ^ Z, ({0: -1, 1: 0}, {})),
+        ("ZZ", Z ^ Z, ({}, {(0, 1): 1})),
+        ("IZZI", I ^ Z ^ Z ^ I, ({0: 0, 1: 0, 2: 0, 3: 0}, {(1, 2): 1})),
+        ("IZZ+ZIZ", SummedOp([I ^ Z ^ Z, 2 * Z ^ I ^ Z]),
+         ({}, {(0, 1): 1, (0, 2): 2})),
         ("Z_matrix", MatrixOp([[1, 0], [0, -1]]), ({0: -1}, {})),
     ])
     def test_operator_conversion(self, name, operator, ising):
@@ -68,7 +66,7 @@ class TestMinimumEigensolver(unittest.TestCase):
         self.assertEqual(mes.bqm.spin, bqm)
 
     @parameterized.expand([
-        ("ZZZ", Z^Z^Z),
+        ("ZZZ", Z ^ Z ^ Z),
         ("X", X),
     ])
     def test_non_ising_operator(self, name, operator):
@@ -128,7 +126,7 @@ class TestMinimumEigensolver(unittest.TestCase):
 
     def test_ground_states_returned_only(self):
         # two ground states, six excited states
-        operator = SummedOp([I^Z^Z, 2 * Z^I^Z])
+        operator = SummedOp([I ^ Z ^ Z, 2 * Z ^ I ^ Z])
         ground_states = ['100', '011']
 
         # use exact solver as sampler
@@ -140,10 +138,10 @@ class TestMinimumEigensolver(unittest.TestCase):
 
     def test_aux_operators(self):
         # two ground states: '01', '10'
-        operator = Z^Z
+        operator = Z ^ Z
         bqm = dimod.BQM.from_ising({}, {(0, 1): 1}).binary
 
-        aux_operators = [I^Z, Z^I]
+        aux_operators = [I ^ Z, Z ^ I]
         aux_bqms = [dimod.BQM.from_ising({0: -1, 1: 0}, {}).binary,
                     dimod.BQM.from_ising({0: 0, 1: -1}, {}).binary]
 
@@ -156,8 +154,8 @@ class TestMinimumEigensolver(unittest.TestCase):
         self.assertListEqual(dwave_mes.aux_bqms, aux_bqms)
 
         # verify aux_operator eigenvalues (-1, +1) and (+1, -1)
-        self.assertEqual(sum(result.aux_operator_eigenvalues[0][:,0]), 0)
-        self.assertEqual(sum(result.aux_operator_eigenvalues[1][:,0]), 0)
+        self.assertEqual(sum(result.aux_operator_eigenvalues[0][:, 0]), 0)
+        self.assertEqual(sum(result.aux_operator_eigenvalues[1][:, 0]), 0)
 
 
 class TestMinimumEigenOptimizerFlow(unittest.TestCase):
@@ -196,10 +194,12 @@ class TestMinimumEigenOptimizerFlow(unittest.TestCase):
         # verify all ground states are present
         self.assertEqual(len(result.x), qp.get_num_vars())
         self.assertEqual(len(result.samples), len(ground_states))
-        self.assertSetEqual(set(sample for sample, _, _ in result.samples), ground_states)
+        self.assertSetEqual(
+            set(sample for sample, _, _ in result.samples), ground_states)
 
         # verify raw sampleset is accessible
-        self.assertEqual(len(result.min_eigen_solver_result.sampleset), 2 ** qp.get_num_vars())
+        self.assertEqual(
+            len(result.min_eigen_solver_result.sampleset), 2 ** qp.get_num_vars())
 
 
 class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
@@ -246,44 +246,28 @@ class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
 
         qp = create_random_qubo_qp(size=2, seed=123)
         num_reads = 1000
+        label = "test_label"
 
-        mes = DWaveMinimumEigensolver(sampler=self.sampler, num_reads=num_reads)
+        mes = DWaveMinimumEigensolver(
+            sampler=self.sampler, num_reads=num_reads)
+
+        mes.sample_kwargs['label'] = label
+
         result = MinimumEigenOptimizer(mes).solve(qp)
 
-        total_samples = sum(result.min_eigen_solver_result.sampleset.record.num_occurrences)
+        total_samples = sum(
+            result.min_eigen_solver_result.sampleset.record.num_occurrences)
         self.assertEqual(total_samples, num_reads)
 
-    def test_sampling_params_compute_minimum_eigenvalue(self):
-        """Sampling parameters are correctly propagated with method compute_minimum_eigenvalue."""
-
-        six_cities_tsp = tsp.random_tsp(6, seed=123)
-        operator, offset = tsp.get_operator(six_cities_tsp)
-
-        # set number of reads for dwave_meo
-        num_reads = 1000
-        mes = DWaveMinimumEigensolver(sampler=self.sampler, num_reads=num_reads)
-        result = mes.compute_minimum_eigenvalue(operator)
-
-        total_samples = sum(result.sampleset.record.num_occurrences)
-        self.assertEqual(total_samples, num_reads)
-
-        # set number of reads and label individually for problem
-        num_reads = 500
-        label = "test_label"
-        result = mes.compute_minimum_eigenvalue(operator, num_reads=num_reads, label=label)
-
-        total_samples = sum(result.sampleset.record.num_occurrences)
-        self.assertEqual(total_samples, num_reads)
-
-        problem_label = result.sampleset.info['problem_label']
+        problem_label = result.min_eigen_solver_result.sampleset.info['problem_label']
         self.assertEqual(problem_label, label)
-
 
     @parameterized.expand([(size, ) for size in range(1, 5)])
     def test_random_qp(self, size):
         """QP solutions from NumPy exact solver and DWave MES match."""
 
-        qp = create_random_qubo_qp(size=size, min_bias=-10, max_bias=10, seed=12345)
+        qp = create_random_qubo_qp(
+            size=size, min_bias=-10, max_bias=10, seed=12345)
 
         # solve with Numpy MES
         numpy_mes = NumPyMinimumEigensolver()
@@ -316,13 +300,16 @@ class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
         qp.integer_var(0, 7, 'a')
         qp.integer_var(0, 7, 'b')
         qp.binary_var('c')
-        qp.minimize(constant=3, linear={'a': 1}, quadratic={'ab': -1, 'bb': 1, 'ac': -1})
-        qp.linear_constraint(linear={'a': 1, 'c': 1}, sense='>=', rhs=1, name='lin_geq')
-        qp.linear_constraint(linear={'b': 1}, sense='<=', rhs=3, name='lin_leq')
+        qp.minimize(constant=3, linear={'a': 1}, quadratic={
+                    'ab': -1, 'bb': 1, 'ac': -1})
+        qp.linear_constraint(
+            linear={'a': 1, 'c': 1}, sense='>=', rhs=1, name='lin_geq')
+        qp.linear_constraint(
+            linear={'b': 1}, sense='<=', rhs=3, name='lin_leq')
 
         # NOTE: auto penalty in LinearEqualityToPenalty is >100, resulting with
         # big dynamic range of QUBO coefficients. Try with penalty=1
-        #qubo = QuadraticProgramToQubo(penalty=1).convert(qp)
+        # qubo = QuadraticProgramToQubo(penalty=1).convert(qp)
 
         # solve with Numpy MES
         numpy_mes = NumPyMinimumEigensolver()
@@ -336,7 +323,3 @@ class TestMinimumEigenOptimizerOnDWave(unittest.TestCase):
 
         # test only energy, actual ground states might differ
         self.assertEqual(numpy_result.fval, dwave_result.fval)
-
-TestMinimumEigenOptimizerOnDWave.setUpClass()
-test = TestMinimumEigenOptimizerOnDWave()
-test.test_sampling_params_compute_minimum_eigenvalue()

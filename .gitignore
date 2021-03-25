@@ -9,6 +9,7 @@ build/
 dist/
 wheels/
 docs/**/generated/
+*.egg-info/
 
 # Spyder project settings
 .spyderproject

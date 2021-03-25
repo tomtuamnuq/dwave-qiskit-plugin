@@ -41,8 +41,12 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
             Instantiated D-Wave sampler. Defaults to
             ~dwave.system.AutoEmbeddingComposite`-wrapped
             `~dwave.system.DWaveSampler` over a QPU solver.
-        num_reads:
-            Number of QPU reads.
+        **sample_kwargs:
+            Optional keyword arguments for the sampling method, specified for solver in
+            :attr:`.sampler`. D-Wave System Documentation's
+            `solver guide <https://docs.dwavesys.com/docs/latest/doc_solver_ref.html>`_
+            describes the parameters and properties supported on the D-Wave system.
+            Number of QPU reads defaults to 100.
 
     Note:
         Configured access to D-Wave API/Leap is a prerequisite.
@@ -66,14 +70,16 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                  aux_operators: Optional[List[Optional[Union[OperatorBase,
                                                              LegacyBaseOperator]]]] = None,
                  sampler: dimod.Sampler = None,
-                 num_reads: int = 100,
+                 **sample_kwargs
                  ) -> None:
         super().__init__()
         self.operator = operator
         self.aux_operators = aux_operators
 
         self._sampler = sampler
-        self._num_reads = num_reads
+        self._sample_kwargs = dict(sample_kwargs)
+        if 'num_reads' not in sample_kwargs:
+            self._sample_kwargs['num_reads'] = 100
 
     def supports_aux_operators(self) -> bool:
         # NOTE: needed because of overly strict check on MinimumEigenOptimizer
@@ -163,7 +169,8 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
         """
         bqms = getattr(self, '_aux_bqms', None)
         if bqms is None:
-            bqms = self._aux_bqms = [self._operator_to_bqm(aux_op) for aux_op in self.aux_operators]
+            bqms = self._aux_bqms = [self._operator_to_bqm(
+                aux_op) for aux_op in self.aux_operators]
         return bqms
 
     @property
@@ -174,21 +181,27 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
             _sampler = self._sampler = AutoEmbeddingComposite(DWaveSampler())
         return _sampler
 
+    @property
+    def sample_kwargs(self) -> Dict:
+        """Optional keyword arguments for the sampling method, specified for solver in
+            :attr:`.sampler`."""
+        return self._sample_kwargs
+
     def compute_minimum_eigenvalue(
             self,
             operator: Optional[Union[OperatorBase, LegacyBaseOperator]] = None,
             aux_operators: Optional[List[Optional[Union[OperatorBase,
-                                                        LegacyBaseOperator]]]] = None,
-            **sample_kwargs
+                                                        LegacyBaseOperator]]]] = None
     ) -> MinimumEigensolverResult:
         super().compute_minimum_eigenvalue(operator, aux_operators)
-        return self._run(**sample_kwargs)
+        return self._run()
 
-    def _sample(self, **kwargs) -> dimod.SampleSet:
-        if 'num_reads' in self.sampler.parameters and 'num_reads' not in kwargs:
-            kwargs['num_reads'] = self._num_reads
+    def _sample(self) -> dimod.SampleSet:
+        """Call sample method of :attr:`.sampler` with :attr:`.sample_kwargs`."""
+        params = {arg: value for (
+            arg, value) in self._sample_kwargs.items() if arg in self.sampler.parameters}
 
-        return self.sampler.sample(self.bqm, **kwargs)
+        return self.sampler.sample(self.bqm, **params)
 
     @staticmethod
     def _stringify(sample: np.ndarray) -> str:
@@ -202,13 +215,9 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                   for operator in self._aux_operators]
         return np.array(values, dtype=object)
 
-    def _run(self, **sample_kwargs) -> MinimumEigensolverResult:
+    def _run(self) -> MinimumEigensolverResult:
         """Sample the Ising Hamiltonian provided on a D-Wave QPU to obtain the
         ground state(s).
-
-        Args:
-            **sample_kwargs: Parameters for the sampling method, specified by
-                sampler.
 
         Returns:
             MinimumEigensolverResult:
@@ -220,7 +229,7 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
                 if no operator has been provided
         """
 
-        sampleset = self._sample(**sample_kwargs)
+        sampleset = self._sample()
 
         logger.debug('sampleset: %r', sampleset)
 
@@ -256,9 +265,9 @@ class DWaveMinimumEigensolver(MinimumEigensolver):
 
     def run(self,
             operator: Optional[Union[OperatorBase, LegacyBaseOperator]] = None,
-            aux_operators: \
-                Optional[List[Optional[Union[OperatorBase,
-                                             LegacyBaseOperator]]]] = None
-    ) -> MinimumEigensolverResult:
+            aux_operators:
+            Optional[List[Optional[Union[OperatorBase,
+                                         LegacyBaseOperator]]]] = None
+            ) -> MinimumEigensolverResult:
         """Obtain ground state(s) of an Ising Hamiltonian using D-Wave's QPU."""
         return self.compute_minimum_eigenvalue(operator, aux_operators)
